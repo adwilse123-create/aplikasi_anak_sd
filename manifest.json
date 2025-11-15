@@ -1,0 +1,27 @@
+{
+  "name": "Aplikasi Suara & Teks untuk Anak SD",
+  "short_name": "Suara & Teks",
+  "description": "Aplikasi edukatif untuk anak SD belajar menulis dan berbicara",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#4B86FF",
+  "theme_color": "#4B86FF",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "kids"],
+  "lang": "id",
+  "dir": "ltr"
+}
