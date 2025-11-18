@@ -2,7 +2,8 @@
 let currentUtterance = null;
 let recognition = null;
 let isRecording = false;
-let finalTranscript = ''; // Changed: untuk menyimpan hasil final
+let finalTranscript = '';
+let recognitionTimeout = null;
 let microphonePermissionGranted = false;
 let deferredPrompt = null;
 
@@ -38,7 +39,7 @@ function initializeApp() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
         recognition.lang = 'id-ID';
-        recognition.continuous = true;
+        recognition.continuous = false; // FIXED: Ubah jadi false agar tidak autocorrect terus
         recognition.interimResults = true;
         recognition.maxAlternatives = 1;
 
@@ -48,40 +49,60 @@ function initializeApp() {
         };
 
         recognition.onresult = (event) => {
-            // FIXED: Cara baru yang tidak duplikat
             let interimTranscript = '';
+            let newFinalTranscript = '';
             
-            for (let i = event.resultIndex; i < event.results.length; i++) {
+            for (let i = 0; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 
                 if (event.results[i].isFinal) {
-                    // Tambahkan hasil final ke finalTranscript
-                    finalTranscript += transcript + ' ';
+                    newFinalTranscript += transcript + ' ';
                 } else {
-                    // Hasil sementara (belum final)
                     interimTranscript += transcript;
                 }
             }
 
-            // Update textarea dengan hasil final + interim
+            // Update finalTranscript hanya jika ada hasil final baru
+            if (newFinalTranscript) {
+                finalTranscript += newFinalTranscript;
+            }
+
+            // Update textarea
             const speechText = document.getElementById('speechText');
             speechText.value = finalTranscript + interimTranscript;
+            
+            // Auto scroll ke bawah
+            speechText.scrollTop = speechText.scrollHeight;
         };
 
         recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
-            handleRecognitionError(event.error);
+            
+            // Jangan handle error "no-speech" karena itu normal saat user diam
+            if (event.error !== 'no-speech') {
+                handleRecognitionError(event.error);
+            }
         };
 
         recognition.onend = () => {
             console.log('Speech recognition ended');
+            
+            // Jika masih dalam mode recording, restart recognition setelah delay singkat
             if (isRecording) {
-                try {
-                    recognition.start();
-                } catch(e) {
-                    console.log('Recognition restart failed:', e);
-                    stopRecording();
-                }
+                recognitionTimeout = setTimeout(() => {
+                    if (isRecording) {
+                        try {
+                            recognition.start();
+                            console.log('Recognition restarted');
+                        } catch(e) {
+                            console.log('Recognition restart failed:', e);
+                        }
+                    }
+                }, 300); // Delay 300ms sebelum restart
+            } else {
+                // Simpan hasil final ke textarea saat benar-benar selesai
+                const speechText = document.getElementById('speechText');
+                speechText.value = finalTranscript.trim();
             }
         };
     }
@@ -289,8 +310,7 @@ async function startRecording() {
         
         isRecording = true;
         
-        // FIXED: Reset finalTranscript saat mulai rekam baru
-        // Ambil teks yang sudah ada di textarea (jika user mau lanjutkan)
+        // Ambil teks yang sudah ada (jika user mau lanjutkan)
         const currentText = document.getElementById('speechText').value.trim();
         if (currentText) {
             finalTranscript = currentText + ' ';
@@ -321,6 +341,12 @@ async function startRecording() {
 function stopRecording() {
     isRecording = false;
     
+    // Clear timeout jika ada
+    if (recognitionTimeout) {
+        clearTimeout(recognitionTimeout);
+        recognitionTimeout = null;
+    }
+    
     if (recognition) {
         try {
             recognition.stop();
@@ -333,10 +359,11 @@ function stopRecording() {
     document.getElementById('stopBtn').style.display = 'none';
     document.getElementById('recordingIndicator').classList.remove('active');
     
-    // Simpan hasil final ke textarea
-    document.getElementById('speechText').value = finalTranscript.trim();
-    
-    updateStatus('✅ Rekaman selesai!');
+    // Simpan hasil final ke textarea dengan sedikit delay
+    setTimeout(() => {
+        document.getElementById('speechText').value = finalTranscript.trim();
+        updateStatus('✅ Rekaman selesai!');
+    }, 200);
 }
 
 function readText() {
@@ -413,7 +440,7 @@ function clearSpeech() {
     if (confirm('🤔 Yakin mau hapus rekaman dan teks?')) {
         stopRecording();
         document.getElementById('speechText').value = '';
-        finalTranscript = ''; // FIXED: Reset juga variabel finalTranscript
+        finalTranscript = '';
         window.speechSynthesis.cancel();
         updateStatus('🗑️ Rekaman dihapus! Siap merekam lagi');
     }
@@ -441,10 +468,11 @@ function handleRecognitionError(errorType) {
         updateStatus('❌ Mikrofon perlu diizinkan');
         stopRecording();
     } else if (errorType === 'no-speech') {
-        updateStatus('⚠️ Tidak mendengar suara. Bicara lebih keras! 🔊');
+        // User diam, ini normal - jangan tampilkan error
+        console.log('No speech detected, continuing...');
     } else if (errorType !== 'aborted') {
-        updateStatus('⚠️ Ada masalah: ' + errorType);
-        stopRecording();
+        console.warn('Recognition error:', errorType);
+        updateStatus('⚠️ Terjadi gangguan, tetap merekam...');
     }
 }
 
