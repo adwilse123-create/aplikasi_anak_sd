@@ -2,7 +2,7 @@
 let currentUtterance = null;
 let recognition = null;
 let isRecording = false;
-let finalTranscript = ''; // Changed: untuk menyimpan hasil final
+let lastText = '';
 let microphonePermissionGranted = false;
 let deferredPrompt = null;
 
@@ -10,11 +10,13 @@ let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    document.getElementById('installPrompt').classList.add('show');
 });
 
 window.addEventListener('appinstalled', () => {
     console.log('PWA installed');
     deferredPrompt = null;
+    document.getElementById('installPrompt').classList.remove('show');
 });
 
 // ========== INITIALIZATION ==========
@@ -48,24 +50,25 @@ function initializeApp() {
         };
 
         recognition.onresult = (event) => {
-            // FIXED: Cara baru yang tidak duplikat
+            let finalTranscript = '';
             let interimTranscript = '';
-            
+
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
-                
                 if (event.results[i].isFinal) {
-                    // Tambahkan hasil final ke finalTranscript
                     finalTranscript += transcript + ' ';
                 } else {
-                    // Hasil sementara (belum final)
                     interimTranscript += transcript;
                 }
             }
 
-            // Update textarea dengan hasil final + interim
             const speechText = document.getElementById('speechText');
-            speechText.value = finalTranscript + interimTranscript;
+            if (finalTranscript) {
+                lastText += finalTranscript;
+                speechText.value = lastText;
+            } else {
+                speechText.value = lastText + interimTranscript;
+            }
         };
 
         recognition.onerror = (event) => {
@@ -282,21 +285,10 @@ async function startRecording() {
         stream.getTracks().forEach(track => track.stop());
         
         microphonePermissionGranted = true;
-        const permissionAlert = document.getElementById('permissionAlert');
-        if (permissionAlert) {
-            permissionAlert.style.display = 'none';
-        }
+        document.getElementById('permissionAlert').style.display = 'none';
         
         isRecording = true;
-        
-        // FIXED: Reset finalTranscript saat mulai rekam baru
-        // Ambil teks yang sudah ada di textarea (jika user mau lanjutkan)
-        const currentText = document.getElementById('speechText').value.trim();
-        if (currentText) {
-            finalTranscript = currentText + ' ';
-        } else {
-            finalTranscript = '';
-        }
+        lastText = document.getElementById('speechText').value;
         
         document.getElementById('recordBtn').style.display = 'none';
         document.getElementById('stopBtn').style.display = 'block';
@@ -332,9 +324,6 @@ function stopRecording() {
     document.getElementById('recordBtn').style.display = 'block';
     document.getElementById('stopBtn').style.display = 'none';
     document.getElementById('recordingIndicator').classList.remove('active');
-    
-    // Simpan hasil final ke textarea
-    document.getElementById('speechText').value = finalTranscript.trim();
     
     updateStatus('✅ Rekaman selesai!');
 }
@@ -413,7 +402,7 @@ function clearSpeech() {
     if (confirm('🤔 Yakin mau hapus rekaman dan teks?')) {
         stopRecording();
         document.getElementById('speechText').value = '';
-        finalTranscript = ''; // FIXED: Reset juga variabel finalTranscript
+        lastText = '';
         window.speechSynthesis.cancel();
         updateStatus('🗑️ Rekaman dihapus! Siap merekam lagi');
     }
