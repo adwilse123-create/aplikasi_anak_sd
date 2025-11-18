@@ -3,6 +3,7 @@ let currentUtterance = null;
 let recognition = null;
 let isRecording = false;
 let finalTranscript = '';
+let interimTranscript = '';
 let recognitionTimeout = null;
 let microphonePermissionGranted = false;
 let deferredPrompt = null;
@@ -39,8 +40,8 @@ function initializeApp() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
         recognition.lang = 'id-ID';
-        recognition.continuous = false; // FIXED: Ubah jadi false agar tidak autocorrect terus
-        recognition.interimResults = true;
+        recognition.continuous = true; // TRUE agar terus merekam
+        recognition.interimResults = true; // Tampil real-time
         recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
@@ -49,25 +50,22 @@ function initializeApp() {
         };
 
         recognition.onresult = (event) => {
-            let interimTranscript = '';
-            let newFinalTranscript = '';
+            // ❌ MATIKAN AUTOCORRECT: Ambil hasil mentah apa adanya
+            interimTranscript = '';
             
-            for (let i = 0; i < event.results.length; i++) {
+            for (let i = event.resultIndex; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 
                 if (event.results[i].isFinal) {
-                    newFinalTranscript += transcript + ' ';
+                    // Tambahkan ke final TANPA edit/koreksi
+                    finalTranscript += transcript + ' ';
                 } else {
+                    // Interim text (text sementara saat bicara)
                     interimTranscript += transcript;
                 }
             }
 
-            // Update finalTranscript hanya jika ada hasil final baru
-            if (newFinalTranscript) {
-                finalTranscript += newFinalTranscript;
-            }
-
-            // Update textarea
+            // Update textarea dengan hasil MENTAH
             const speechText = document.getElementById('speechText');
             speechText.value = finalTranscript + interimTranscript;
             
@@ -78,8 +76,7 @@ function initializeApp() {
         recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
             
-            // Jangan handle error "no-speech" karena itu normal saat user diam
-            if (event.error !== 'no-speech') {
+            if (event.error !== 'no-speech' && event.error !== 'audio-capture') {
                 handleRecognitionError(event.error);
             }
         };
@@ -87,7 +84,11 @@ function initializeApp() {
         recognition.onend = () => {
             console.log('Speech recognition ended');
             
-            // Jika masih dalam mode recording, restart recognition setelah delay singkat
+            // ✅ FIXED: Simpan hasil ke textarea
+            const speechText = document.getElementById('speechText');
+            speechText.value = finalTranscript.trim();
+            
+            // Restart jika masih recording
             if (isRecording) {
                 recognitionTimeout = setTimeout(() => {
                     if (isRecording) {
@@ -96,13 +97,10 @@ function initializeApp() {
                             console.log('Recognition restarted');
                         } catch(e) {
                             console.log('Recognition restart failed:', e);
+                            stopRecording();
                         }
                     }
-                }, 300); // Delay 300ms sebelum restart
-            } else {
-                // Simpan hasil final ke textarea saat benar-benar selesai
-                const speechText = document.getElementById('speechText');
-                speechText.value = finalTranscript.trim();
+                }, 100);
             }
         };
     }
@@ -165,7 +163,7 @@ function showTextEditor(mode) {
         textEditor.style.minHeight = '150px';
     } else {
         instruction.textContent = '📝 Tulis Cerita Panjang';
-        textEditor.placeholder = 'Tulis ceritamu di sini...\n\nCerita tentang hewan peliharaanmu, liburan, atau petualangan seru!';
+        textEditor.placeholder = 'Tulis ceritamu di sini...\n\nCerita tentang hewan peliharanmu, liburan, atau petualangan seru!';
         textEditor.style.minHeight = '250px';
     }
     
@@ -213,11 +211,33 @@ function textToSpeech() {
     }
 
     window.speechSynthesis.cancel();
+    
+    // ✅ SUARA GOOGLE NATURAL
     currentUtterance = new SpeechSynthesisUtterance(text);
     currentUtterance.lang = 'id-ID';
-    currentUtterance.rate = 0.9;
-    currentUtterance.pitch = 1.1;
+    currentUtterance.rate = 0.9; // Kecepatan natural
+    currentUtterance.pitch = 1.0; // Pitch normal
     currentUtterance.volume = 1.0;
+
+    // ✅ Cari dan gunakan Google Voice Indonesia
+    const voices = window.speechSynthesis.getVoices();
+    const googleVoice = voices.find(voice => 
+        voice.lang.startsWith('id') && 
+        (voice.name.toLowerCase().includes('google') || 
+         voice.name.toLowerCase().includes('indonesia'))
+    );
+    
+    if (googleVoice) {
+        currentUtterance.voice = googleVoice;
+        console.log('✅ Using Google voice:', googleVoice.name);
+    } else {
+        // Fallback: cari voice Indonesia mana saja
+        const idVoice = voices.find(voice => voice.lang.startsWith('id'));
+        if (idVoice) {
+            currentUtterance.voice = idVoice;
+            console.log('Using voice:', idVoice.name);
+        }
+    }
 
     currentUtterance.onstart = () => {
         updateStatus('🔊 Sedang memutar suara...');
@@ -317,6 +337,7 @@ async function startRecording() {
         } else {
             finalTranscript = '';
         }
+        interimTranscript = '';
         
         document.getElementById('recordBtn').style.display = 'none';
         document.getElementById('stopBtn').style.display = 'block';
@@ -359,11 +380,15 @@ function stopRecording() {
     document.getElementById('stopBtn').style.display = 'none';
     document.getElementById('recordingIndicator').classList.remove('active');
     
-    // Simpan hasil final ke textarea dengan sedikit delay
+    // ✅ FIXED: Pastikan teks TIDAK HILANG
     setTimeout(() => {
-        document.getElementById('speechText').value = finalTranscript.trim();
-        updateStatus('✅ Rekaman selesai!');
-    }, 200);
+        const speechText = document.getElementById('speechText');
+        const savedText = finalTranscript.trim();
+        if (savedText) {
+            speechText.value = savedText;
+        }
+        updateStatus('✅ Rekaman selesai! Teks tersimpan');
+    }, 300);
 }
 
 function readText() {
@@ -380,11 +405,32 @@ function readText() {
     }
 
     window.speechSynthesis.cancel();
+    
+    // ✅ SUARA GOOGLE NATURAL
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'id-ID';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.1;
+    utterance.rate = 0.9; // Kecepatan natural
+    utterance.pitch = 1.0; // Pitch normal
     utterance.volume = 1.0;
+
+    // ✅ Cari dan gunakan Google Voice Indonesia
+    const voices = window.speechSynthesis.getVoices();
+    const googleVoice = voices.find(voice => 
+        voice.lang.startsWith('id') && 
+        (voice.name.toLowerCase().includes('google') || 
+         voice.name.toLowerCase().includes('indonesia'))
+    );
+    
+    if (googleVoice) {
+        utterance.voice = googleVoice;
+        console.log('✅ Using Google voice:', googleVoice.name);
+    } else {
+        const idVoice = voices.find(voice => voice.lang.startsWith('id'));
+        if (idVoice) {
+            utterance.voice = idVoice;
+            console.log('Using voice:', idVoice.name);
+        }
+    }
 
     utterance.onstart = () => {
         updateStatus('🔊 Sedang membaca teks...');
@@ -441,6 +487,7 @@ function clearSpeech() {
         stopRecording();
         document.getElementById('speechText').value = '';
         finalTranscript = '';
+        interimTranscript = '';
         window.speechSynthesis.cancel();
         updateStatus('🗑️ Rekaman dihapus! Siap merekam lagi');
     }
@@ -468,7 +515,6 @@ function handleRecognitionError(errorType) {
         updateStatus('❌ Mikrofon perlu diizinkan');
         stopRecording();
     } else if (errorType === 'no-speech') {
-        // User diam, ini normal - jangan tampilkan error
         console.log('No speech detected, continuing...');
     } else if (errorType !== 'aborted') {
         console.warn('Recognition error:', errorType);
@@ -484,6 +530,20 @@ function updateStatus(message) {
 function stopAllAudio() {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     if (isRecording) stopRecording();
+}
+
+// ✅ Load Google voices saat halaman dimuat
+if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const idVoices = voices.filter(v => v.lang.startsWith('id'));
+        console.log('📢 Available Indonesian voices:', idVoices.map(v => v.name));
+        
+        const googleVoice = idVoices.find(v => v.name.toLowerCase().includes('google'));
+        if (googleVoice) {
+            console.log('✅ Google Indonesian voice found:', googleVoice.name);
+        }
+    };
 }
 
 window.addEventListener('beforeunload', stopAllAudio);
