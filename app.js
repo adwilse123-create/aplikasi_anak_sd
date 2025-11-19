@@ -7,6 +7,8 @@ let interimTranscript = '';
 let recognitionTimeout = null;
 let microphonePermissionGranted = false;
 let deferredPrompt = null;
+let processedResults = new Set(); // ✅ Track hasil yang sudah diproses
+let lastFinalTranscriptLength = 0; // ✅ Track panjang transcript terakhir
 
 // ========== PWA INSTALLATION ==========
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -40,8 +42,8 @@ function initializeApp() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
         recognition.lang = 'id-ID';
-        recognition.continuous = true; // TRUE agar terus merekam
-        recognition.interimResults = true; // Tampil real-time
+        recognition.continuous = true;
+        recognition.interimResults = true;
         recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
@@ -50,27 +52,47 @@ function initializeApp() {
         };
 
         recognition.onresult = (event) => {
-            // ❌ MATIKAN AUTOCORRECT: Ambil hasil mentah apa adanya
+            // ✅ FIXED: Sistem baru untuk mencegah duplikasi di Android
             interimTranscript = '';
+            let currentFinalText = '';
             
-            for (let i = event.resultIndex; i < event.results.length; i++) {
+            // Ambil semua hasil dari awal
+            for (let i = 0; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 
                 if (event.results[i].isFinal) {
-                    // Tambahkan ke final TANPA edit/koreksi
-                    finalTranscript += transcript + ' ';
+                    // Kumpulkan semua final results
+                    currentFinalText += transcript + ' ';
                 } else {
-                    // Interim text (text sementara saat bicara)
+                    // Interim results (sementara)
                     interimTranscript += transcript;
                 }
             }
+            
+            // ✅ Update final transcript hanya jika ada perubahan
+            if (currentFinalText.trim().length > 0) {
+                const trimmedFinal = currentFinalText.trim();
+                
+                // Cek apakah ini hasil baru (tidak duplikat)
+                if (trimmedFinal.length > lastFinalTranscriptLength) {
+                    // Ambil hanya bagian baru
+                    const newPart = trimmedFinal.substring(lastFinalTranscriptLength).trim();
+                    if (newPart.length > 0) {
+                        finalTranscript += newPart + ' ';
+                        lastFinalTranscriptLength = trimmedFinal.length;
+                    }
+                }
+            }
 
-            // Update textarea dengan hasil MENTAH
+            // Update textarea dengan hasil terbaru
             const speechText = document.getElementById('speechText');
             speechText.value = finalTranscript + interimTranscript;
             
             // Auto scroll ke bawah
             speechText.scrollTop = speechText.scrollHeight;
+            
+            console.log('Final:', finalTranscript);
+            console.log('Interim:', interimTranscript);
         };
 
         recognition.onerror = (event) => {
@@ -84,7 +106,7 @@ function initializeApp() {
         recognition.onend = () => {
             console.log('Speech recognition ended');
             
-            // ✅ FIXED: Simpan hasil ke textarea
+            // ✅ Simpan hasil ke textarea
             const speechText = document.getElementById('speechText');
             speechText.value = finalTranscript.trim();
             
@@ -93,6 +115,8 @@ function initializeApp() {
                 recognitionTimeout = setTimeout(() => {
                     if (isRecording) {
                         try {
+                            // ✅ Reset tracking saat restart
+                            lastFinalTranscriptLength = 0;
                             recognition.start();
                             console.log('Recognition restarted');
                         } catch(e) {
@@ -212,11 +236,10 @@ function textToSpeech() {
 
     window.speechSynthesis.cancel();
     
-    // ✅ SUARA GOOGLE NATURAL
     currentUtterance = new SpeechSynthesisUtterance(text);
     currentUtterance.lang = 'id-ID';
-    currentUtterance.rate = 0.9; // Kecepatan natural
-    currentUtterance.pitch = 1.0; // Pitch normal
+    currentUtterance.rate = 0.9;
+    currentUtterance.pitch = 1.0;
     currentUtterance.volume = 1.0;
 
     // ✅ Cari dan gunakan Google Voice Indonesia
@@ -231,7 +254,6 @@ function textToSpeech() {
         currentUtterance.voice = googleVoice;
         console.log('✅ Using Google voice:', googleVoice.name);
     } else {
-        // Fallback: cari voice Indonesia mana saja
         const idVoice = voices.find(voice => voice.lang.startsWith('id'));
         if (idVoice) {
             currentUtterance.voice = idVoice;
@@ -330,6 +352,10 @@ async function startRecording() {
         
         isRecording = true;
         
+        // ✅ Reset semua tracking
+        processedResults.clear();
+        lastFinalTranscriptLength = 0;
+        
         // Ambil teks yang sudah ada (jika user mau lanjutkan)
         const currentText = document.getElementById('speechText').value.trim();
         if (currentText) {
@@ -362,11 +388,14 @@ async function startRecording() {
 function stopRecording() {
     isRecording = false;
     
-    // Clear timeout jika ada
+    // ✅ Clear semua timeout dan tracking
     if (recognitionTimeout) {
         clearTimeout(recognitionTimeout);
         recognitionTimeout = null;
     }
+    
+    processedResults.clear();
+    lastFinalTranscriptLength = 0;
     
     if (recognition) {
         try {
@@ -380,7 +409,7 @@ function stopRecording() {
     document.getElementById('stopBtn').style.display = 'none';
     document.getElementById('recordingIndicator').classList.remove('active');
     
-    // ✅ FIXED: Pastikan teks TIDAK HILANG
+    // ✅ Pastikan teks tersimpan
     setTimeout(() => {
         const speechText = document.getElementById('speechText');
         const savedText = finalTranscript.trim();
@@ -406,11 +435,10 @@ function readText() {
 
     window.speechSynthesis.cancel();
     
-    // ✅ SUARA GOOGLE NATURAL
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'id-ID';
-    utterance.rate = 0.9; // Kecepatan natural
-    utterance.pitch = 1.0; // Pitch normal
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
     // ✅ Cari dan gunakan Google Voice Indonesia
@@ -488,6 +516,8 @@ function clearSpeech() {
         document.getElementById('speechText').value = '';
         finalTranscript = '';
         interimTranscript = '';
+        processedResults.clear(); // ✅ Clear tracking
+        lastFinalTranscriptLength = 0; // ✅ Reset counter
         window.speechSynthesis.cancel();
         updateStatus('🗑️ Rekaman dihapus! Siap merekam lagi');
     }
