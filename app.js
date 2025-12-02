@@ -7,8 +7,8 @@ let interimTranscript = '';
 let recognitionTimeout = null;
 let microphonePermissionGranted = false;
 let deferredPrompt = null;
-let processedResults = new Set(); // ✅ Track hasil yang sudah diproses
-let lastFinalTranscriptLength = 0; // ✅ Track panjang transcript terakhir
+let processedResults = new Set(); 
+let lastFinalTranscriptLength = 0; 
 
 // ========== PWA INSTALLATION ==========
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -52,7 +52,7 @@ function initializeApp() {
         };
 
         recognition.onresult = (event) => {
-            // ✅ FIXED: Sistem baru untuk mencegah duplikasi di Android
+            
             interimTranscript = '';
             let currentFinalText = '';
             
@@ -69,7 +69,7 @@ function initializeApp() {
                 }
             }
             
-            // ✅ Update final transcript hanya jika ada perubahan
+            
             if (currentFinalText.trim().length > 0) {
                 const trimmedFinal = currentFinalText.trim();
                 
@@ -106,7 +106,7 @@ function initializeApp() {
         recognition.onend = () => {
             console.log('Speech recognition ended');
             
-            // ✅ Simpan hasil ke textarea
+            
             const speechText = document.getElementById('speechText');
             speechText.value = finalTranscript.trim();
             
@@ -115,7 +115,7 @@ function initializeApp() {
                 recognitionTimeout = setTimeout(() => {
                     if (isRecording) {
                         try {
-                            // ✅ Reset tracking saat restart
+                            
                             lastFinalTranscriptLength = 0;
                             recognition.start();
                             console.log('Recognition restarted');
@@ -242,7 +242,7 @@ function textToSpeech() {
     currentUtterance.pitch = 1.0;
     currentUtterance.volume = 1.0;
 
-    // ✅ Cari dan gunakan Google Voice Indonesia
+    
     const voices = window.speechSynthesis.getVoices();
     const googleVoice = voices.find(voice => 
         voice.lang.startsWith('id') && 
@@ -352,7 +352,7 @@ async function startRecording() {
         
         isRecording = true;
         
-        // ✅ Reset semua tracking
+        
         processedResults.clear();
         lastFinalTranscriptLength = 0;
         
@@ -388,7 +388,7 @@ async function startRecording() {
 function stopRecording() {
     isRecording = false;
     
-    // ✅ Clear semua timeout dan tracking
+    
     if (recognitionTimeout) {
         clearTimeout(recognitionTimeout);
         recognitionTimeout = null;
@@ -409,7 +409,7 @@ function stopRecording() {
     document.getElementById('stopBtn').style.display = 'none';
     document.getElementById('recordingIndicator').classList.remove('active');
     
-    // ✅ Pastikan teks tersimpan
+    
     setTimeout(() => {
         const speechText = document.getElementById('speechText');
         const savedText = finalTranscript.trim();
@@ -441,7 +441,7 @@ function readText() {
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    // ✅ Cari dan gunakan Google Voice Indonesia
+    
     const voices = window.speechSynthesis.getVoices();
     const googleVoice = voices.find(voice => 
         voice.lang.startsWith('id') && 
@@ -562,7 +562,7 @@ function stopAllAudio() {
     if (isRecording) stopRecording();
 }
 
-// ✅ Load Google voices saat halaman dimuat
+
 if ('speechSynthesis' in window) {
     window.speechSynthesis.onvoiceschanged = () => {
         const voices = window.speechSynthesis.getVoices();
@@ -577,3 +577,4 @@ if ('speechSynthesis' in window) {
 }
 
 window.addEventListener('beforeunload', stopAllAudio);
+
