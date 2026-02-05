@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     checkBrowserSupport();
     registerServiceWorker();
+    loadVoices(); // ✅ Load voices saat startup
 });
 
 function registerServiceWorker() {
@@ -34,6 +35,40 @@ function registerServiceWorker() {
         navigator.serviceWorker.register('sw.js')
             .then(reg => console.log('Service Worker registered'))
             .catch(err => console.log('Service Worker error:', err));
+    }
+}
+
+// ✅ FUNGSI BARU: Load dan log semua voice yang tersedia
+function loadVoices() {
+    if ('speechSynthesis' in window) {
+        // Load voices immediately
+        let voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+            logAvailableVoices(voices);
+        }
+        
+        // Also listen for voice changes (for some browsers)
+        window.speechSynthesis.onvoiceschanged = () => {
+            voices = window.speechSynthesis.getVoices();
+            logAvailableVoices(voices);
+        };
+    }
+}
+
+function logAvailableVoices(voices) {
+    console.log('=== SEMUA VOICE TERSEDIA ===');
+    voices.forEach((voice, index) => {
+        console.log(`${index}. ${voice.name} (${voice.lang}) ${voice.default ? '⭐ DEFAULT' : ''}`);
+    });
+    
+    const idVoices = voices.filter(v => v.lang.toLowerCase().includes('id'));
+    console.log('\n=== VOICE INDONESIA ===');
+    if (idVoices.length > 0) {
+        idVoices.forEach(v => {
+            console.log(`✅ ${v.name} (${v.lang})`);
+        });
+    } else {
+        console.warn('❌ Tidak ada voice Indonesia yang ditemukan!');
     }
 }
 
@@ -220,7 +255,56 @@ function exitApp() {
     }
 }
 
-// ========== TEXT-TO-SPEECH ==========
+// ========== TEXT-TO-SPEECH (IMPROVED) ==========
+function getIndonesianVoice() {
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Priority 1: Google Indonesian female (paling natural)
+    let voice = voices.find(v => 
+        v.lang === 'id-ID' && 
+        v.name.toLowerCase().includes('google') &&
+        v.name.toLowerCase().includes('female')
+    );
+    
+    // Priority 2: Google Indonesian apapun
+    if (!voice) {
+        voice = voices.find(v => 
+            v.lang === 'id-ID' && 
+            v.name.toLowerCase().includes('google')
+        );
+    }
+    
+    // Priority 3: Voice dengan "damayanti" atau nama Indonesia
+    if (!voice) {
+        voice = voices.find(v => 
+            v.lang === 'id-ID' && 
+            (v.name.toLowerCase().includes('damayanti') ||
+             v.name.toLowerCase().includes('indonesia'))
+        );
+    }
+    
+    // Priority 4: Voice apapun dengan lang id-ID exact match
+    if (!voice) {
+        voice = voices.find(v => v.lang === 'id-ID');
+    }
+    
+    // Priority 5: Voice yang dimulai dengan 'id-' atau 'id_'
+    if (!voice) {
+        voice = voices.find(v => 
+            v.lang.toLowerCase().startsWith('id-') || 
+            v.lang.toLowerCase().startsWith('id_')
+        );
+    }
+    
+    if (voice) {
+        console.log('✅ Selected voice:', voice.name, '(' + voice.lang + ')');
+    } else {
+        console.warn('⚠️ No Indonesian voice found!');
+    }
+    
+    return voice;
+}
+
 function textToSpeech() {
     const text = document.getElementById('textEditor').value.trim();
     
@@ -238,27 +322,14 @@ function textToSpeech() {
     
     currentUtterance = new SpeechSynthesisUtterance(text);
     currentUtterance.lang = 'id-ID';
-    currentUtterance.rate = 0.9;
+    currentUtterance.rate = 0.85; // ✅ Lebih lambat untuk pronounciation yang lebih jelas
     currentUtterance.pitch = 1.0;
     currentUtterance.volume = 1.0;
 
-    
-    const voices = window.speechSynthesis.getVoices();
-    const googleVoice = voices.find(voice => 
-        voice.lang.startsWith('id') && 
-        (voice.name.toLowerCase().includes('google') || 
-         voice.name.toLowerCase().includes('indonesia'))
-    );
-    
-    if (googleVoice) {
-        currentUtterance.voice = googleVoice;
-        console.log('✅ Using Google voice:', googleVoice.name);
-    } else {
-        const idVoice = voices.find(voice => voice.lang.startsWith('id'));
-        if (idVoice) {
-            currentUtterance.voice = idVoice;
-            console.log('Using voice:', idVoice.name);
-        }
+    // ✅ Gunakan fungsi pemilihan voice yang lebih baik
+    const selectedVoice = getIndonesianVoice();
+    if (selectedVoice) {
+        currentUtterance.voice = selectedVoice;
     }
 
     currentUtterance.onstart = () => {
@@ -437,27 +508,14 @@ function readText() {
     
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'id-ID';
-    utterance.rate = 0.9;
+    utterance.rate = 0.85; // ✅ Lebih lambat untuk pronounciation yang lebih jelas
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    
-    const voices = window.speechSynthesis.getVoices();
-    const googleVoice = voices.find(voice => 
-        voice.lang.startsWith('id') && 
-        (voice.name.toLowerCase().includes('google') || 
-         voice.name.toLowerCase().includes('indonesia'))
-    );
-    
-    if (googleVoice) {
-        utterance.voice = googleVoice;
-        console.log('✅ Using Google voice:', googleVoice.name);
-    } else {
-        const idVoice = voices.find(voice => voice.lang.startsWith('id'));
-        if (idVoice) {
-            utterance.voice = idVoice;
-            console.log('Using voice:', idVoice.name);
-        }
+    // ✅ Gunakan fungsi pemilihan voice yang lebih baik
+    const selectedVoice = getIndonesianVoice();
+    if (selectedVoice) {
+        utterance.voice = selectedVoice;
     }
 
     utterance.onstart = () => {
@@ -516,8 +574,8 @@ function clearSpeech() {
         document.getElementById('speechText').value = '';
         finalTranscript = '';
         interimTranscript = '';
-        processedResults.clear(); // ✅ Clear tracking
-        lastFinalTranscriptLength = 0; // ✅ Reset counter
+        processedResults.clear();
+        lastFinalTranscriptLength = 0;
         window.speechSynthesis.cancel();
         updateStatus('🗑️ Rekaman dihapus! Siap merekam lagi');
     }
@@ -562,19 +620,4 @@ function stopAllAudio() {
     if (isRecording) stopRecording();
 }
 
-
-if ('speechSynthesis' in window) {
-    window.speechSynthesis.onvoiceschanged = () => {
-        const voices = window.speechSynthesis.getVoices();
-        const idVoices = voices.filter(v => v.lang.startsWith('id'));
-        console.log('📢 Available Indonesian voices:', idVoices.map(v => v.name));
-        
-        const googleVoice = idVoices.find(v => v.name.toLowerCase().includes('google'));
-        if (googleVoice) {
-            console.log('✅ Google Indonesian voice found:', googleVoice.name);
-        }
-    };
-}
-
 window.addEventListener('beforeunload', stopAllAudio);
-
